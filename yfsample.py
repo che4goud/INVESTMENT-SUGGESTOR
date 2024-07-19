@@ -5,7 +5,6 @@ import yfinance as yf
 import datetime as dt
 import statsmodels.api as sm
 import streamlit as st
-from streamlit_option_menu import option_menu
 
 
 # CSS to inject contained in a string
