@@ -6,33 +6,18 @@ import datetime as dt
 import statsmodels.api as sm
 import streamlit as st
 
-
-# CSS to inject contained in a string
+# CSS for dark theme
 css = """
 <style>
-/* Dark Theme with Gradients */
-/* General settings for the entire page */
 body {
     background: linear-gradient(to right, #141E30, #243B55);
     color: #ffffff;
     font-family: 'Arial', sans-serif;
 }
-/* Style the header */
-h1 {
-    color: #E0E0E0;
-    text-align: center;
-    margin-bottom: 20px;
-}
-
-h2, h3 {
-    color: #CCCCCC;
-    text-align: center;
-    margin-top: 20px;
-}
+h1 { color: #E0E0E0; text-align: center; margin-bottom: 20px; }
+h2, h3 { color: #CCCCCC; text-align: center; margin-top: 20px; }
 </style>
 """
-
-# Inject CSS with Markdown
 st.markdown(css, unsafe_allow_html=True)
 
 # Streamlit app setup
@@ -51,17 +36,45 @@ end_date = dt.datetime.now()
 start_date = end_date - dt.timedelta(days=365*years)
 
 # Load company data
-company_data = yf.download(ticker, start=start_date, end=end_date,progress=False)
-market_data = yf.download(index_choice, start=start_date, end=end_date,progress=False)
+company_data = yf.download(ticker, start=start_date, end=end_date, progress=False)
+market_data = yf.download(index_choice, start=start_date, end=end_date, progress=False)
+
+# Diagnostic output
+st.write("Company data columns:", company_data.columns.tolist())
+st.write(company_data.head())
 
 # Check if data is loaded properly
 if company_data.empty or market_data.empty:
     st.error(f"Failed to load data for {ticker} or {index_choice}. Please check the ticker symbols and try again.")
     st.stop()
 
+# Flatten MultiIndex columns if present
+if isinstance(company_data.columns, pd.MultiIndex):
+    company_data.columns = [' '.join([str(i) for i in col if i]).strip() for col in company_data.columns]
+
+if isinstance(market_data.columns, pd.MultiIndex):
+    market_data.columns = [' '.join([str(i) for i in col if i]).strip() for col in market_data.columns]
+
+# Try to get the adjusted close or close column
+if 'Adj Close' in company_data.columns:
+    price_col = 'Adj Close'
+elif 'Close' in company_data.columns:
+    price_col = 'Close'
+else:
+    st.error(f"Neither 'Adj Close' nor 'Close' column found in the data for {ticker}. Available columns: {company_data.columns.tolist()}")
+    st.stop()
+
+if 'Close' in market_data.columns:
+    market_price_col = 'Close'
+elif 'Adj Close' in market_data.columns:
+    market_price_col = 'Adj Close'
+else:
+    st.error(f"Neither 'Adj Close' nor 'Close' column found in the data for {index_choice}. Available columns: {market_data.columns.tolist()}")
+    st.stop()
+
 # Calculate returns
-company_data['Returns'] = company_data['Close'].pct_change()
-market_data['Returns'] = market_data['Close'].pct_change()
+company_data['Returns'] = company_data[price_col].pct_change()
+market_data['Returns'] = market_data[market_price_col].pct_change()
 
 # Prepare data for regression
 X = market_data['Returns'].dropna()
@@ -75,8 +88,6 @@ X = sm.add_constant(X)
 
 # Run regression
 model = sm.OLS(y, X).fit()
-
-
 
 # Plot the data points and regression line
 st.subheader('COMPANY VS MARKET RETURNS')
@@ -109,7 +120,6 @@ col1.metric("     BETA",beta)
 col2.metric("     ALPHA",alpha)
 st.subheader('')
 
-
 # Calculating Risks
 r_f = 0.069  # risk-free rate (6.9% annualized)
 r_m = market_data['Returns'].mean() * 252  # annualized average market return
@@ -121,7 +131,6 @@ if r_p < 0:
 
 # Using CAPM model
 capm = r_f + beta * r_p  # cost of equity using CAPM model
-
 
 st.subheader('Risk & CAPM Analysis')
 st.subheader('')
@@ -143,23 +152,13 @@ mu = company_data['Returns'].mean()
 sigma = company_data['Returns'].std()
 
 # Example of simulating future prices
-if isinstance(company_data.columns, pd.MultiIndex):
-    company_data.columns = [' '.join(col).strip() if isinstance(col, tuple) else col for col in company_data.columns]
-
-if 'Adj Close' in company_data.columns:
-    initial_price = company_data['Adj Close'].iloc[-1]
-elif 'Close' in company_data.columns:
-    initial_price = company_data['Close'].iloc[-1]
-else:
-    st.error("Neither 'Adj Close' nor 'Close' column found in the data.")
-    st.stop()
-
+initial_price = company_data[price_col].iloc[-1]
 st.write(f"Initial price is ${initial_price:.2f}")
 
 st.subheader('Monte Carlo Simulations')
 fig, ax = plt.subplots(figsize=(10, 6))
 
-simulated_days = 252 * mcyears # Simulating for 5 years to reduce data size
+simulated_days = 252 * mcyears # Simulating for mcyears years
 simulated_paths = 100  # Reduced paths for quicker plotting
 
 simulation_results = []
@@ -181,7 +180,7 @@ st.pyplot(fig)
 # Explanation of the outcome
 st.write("""
 The Monte Carlo simulation generates multiple potential future price paths for the company based on historical returns and volatility.
-- Each grey line represents a possible trajectory of the company's stock price over the next 1260 trading days (approximately 5 years).
+- Each green line represents a possible trajectory of the company's stock price over the next trading days.
 - The black horizontal line represents the initial stock price.
 This visual representation shows the range of possible future outcomes.
 """)
@@ -213,33 +212,4 @@ else:
 st.subheader('REGRESSION RESULTS')
 st.write(model.summary())
 
-# Use local CSS
-def local_css(file_name):
-    with open(file_name) as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-
-
-local_css("style.css")
-
-# Load Animation
-animation_symbol = "❄"
-
-st.markdown(
-    f"""
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    <div class="snowflake">{animation_symbol}</div>
-    """,
-    unsafe_allow_html=True,
-)
-
+# Optional: Remove or update local_css and animation if not needed
