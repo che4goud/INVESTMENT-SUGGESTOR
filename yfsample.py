@@ -143,7 +143,17 @@ mu = company_data['Returns'].mean()
 sigma = company_data['Returns'].std()
 
 # Example of simulating future prices
-initial_price = company_data['Adj Close'].iloc[-1]
+if isinstance(company_data.columns, pd.MultiIndex):
+    company_data.columns = [' '.join(col).strip() if isinstance(col, tuple) else col for col in company_data.columns]
+
+if 'Adj Close' in company_data.columns:
+    initial_price = company_data['Adj Close'].iloc[-1]
+elif 'Close' in company_data.columns:
+    initial_price = company_data['Close'].iloc[-1]
+else:
+    st.error("Neither 'Adj Close' nor 'Close' column found in the data.")
+    st.stop()
+
 st.write(f"Initial price is ${initial_price:.2f}")
 
 st.subheader('Monte Carlo Simulations')
